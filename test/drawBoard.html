@@ -1,0 +1,72 @@
+<title>Draw Jewels</title>
+<link rel="stylesheet" href="../style.css">
+
+<script type="module">
+
+
+import { Canvas } from '../src/Canvas.js';
+import { Board } from '../src/Board.js';
+
+
+const board = Board.randomBoard();
+
+let selected, moveAxis, moveDist = 0;
+let other;
+
+const canvas = new Canvas();
+canvas.backgroundColor = 'tan';
+canvas.zoom = 1 / 6;
+canvas.scrollX = -0.5;
+canvas.scrollY = -0.5;
+
+canvas.update = ( dt ) => {
+  if ( !board.update( dt ) ) {
+    canvas.stop();
+  }
+}
+
+canvas.draw = ( ctx ) => {
+  ctx.lineWidth = 0.002 / canvas.zoom;
+
+  board.draw( ctx );
+}
+
+canvas.start();
+
+canvas.pointerDown = ( p ) => {
+  if ( p.buttons == 1 ) {
+    board.startDrag( p.x, p.y );  
+  }
+  else if ( p.buttons == 2 ) {
+    board.pieces = board.pieces.filter( e => Math.hypot( e.x - p.x, e.y - p.y ) < 0.5 );
+  }
+
+  canvas.redraw();
+}
+
+canvas.pointerMove = ( p ) => {
+  if ( p.buttons == 1 ) {
+    board.moveDrag( p.dx, p.dy );
+    canvas.redraw();
+  }
+}
+
+canvas.pointerUp = ( p ) => {
+  board.stopDrag();
+
+  canvas.redraw();
+
+  if ( board.update( 0 ) ) {
+    canvas.start();
+  }
+}
+
+canvas.wheelInput = ( p ) => {
+  const ZOOM_SPEED = 0.9;
+  canvas.zoomAt( p.x, p.y, p.wheel < 0 ? ZOOM_SPEED : 1 / ZOOM_SPEED );
+
+  canvas.redraw();
+}
+
+
+</script>
