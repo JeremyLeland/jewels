@@ -42,6 +42,7 @@ export class Board {
           y: y,
           dx: 0,
           dy: 0,
+          fall: 0,
         } );
       }
     }
@@ -49,34 +50,47 @@ export class Board {
     return board;
   }
 
+  static testBoard( colorIndexArray ) {
+    const board = new Board();
+
+    const colors = Object.keys( Jewels.Info );
+
+    colorIndexArray.forEach( ( colorIndex, pieceIndex ) => {
+      const col = pieceIndex % Cols;
+      const row = Math.floor( pieceIndex / Cols );
+
+      board.pieces.push( {
+        type: colors[ colorIndex ],
+        x: col,
+        y: row,
+        dx: 0,
+        dy: 0,
+        fall: 0,
+      } );
+    } );
+
+    return board;
+  }
+
   update( dt ) {
-    let stillUpdating = false;
+    let doneUpdating = true;
 
-    this.pieces.forEach( piece => {
+    // Falling
+    this.pieces.filter( p => p.fall > 0 ).forEach( p => {
+      const fallDist = p.dy * dt + 0.5 * Gravity * dt ** 2;
 
-      // Gravity
-      const belowDist = this.pieces.filter( other => other.x == piece.x )
-        .map( other => other.y - piece.y - 1 )
-        .reduce( ( closest, dist ) => -1 < dist && dist < closest ? dist : closest, Rows - piece.y - 1 );
+      if ( fallDist < p.fall ) {
+        p.y += fallDist;
+        p.dy += Gravity * dt;
+        p.fall -= fallDist;
 
-      if ( belowDist > 0 ) {
-        const fallDist = piece.dy * dt + 0.5 * Gravity * dt ** 2;
-
-        if ( fallDist < belowDist ) {
-          piece.y += fallDist;
-          piece.dy += Gravity * dt;
-
-          stillUpdating = true;
-        }
-        else {
-          piece.y = Math.round( piece.y + belowDist );
-          piece.dy = 0;
-        }
+        doneUpdating = false;
       }
-      
-      // TODO: Snapping after drag
-      // piece.x += piece.dx * dt;
-      
+      else {
+        p.y = Math.round( p.y + p.fall );
+        p.dy = 0;
+        p.fall = 0;
+      }
     } );
 
     this.particles.forEach( part => {
@@ -90,13 +104,13 @@ export class Board {
     
     this.particles = this.particles.filter( p => p.y < Rows );
 
-    if ( !stillUpdating ) {
-      stillUpdating = this.checkWins();
+    if ( doneUpdating ) {
+      doneUpdating = !this.checkWins();
     }
 
-    this.readyForInput = !stillUpdating;
+    this.readyForInput = doneUpdating;
 
-    return stillUpdating || this.particles.length > 0;
+    return !doneUpdating || this.particles.length > 0;
   }
 
   draw( ctx ) {
@@ -208,25 +222,33 @@ export class Board {
     this.pieces = this.pieces.filter( p => !toRemove.has( p ) );
 
     // Sort the rows and add new pieces above
-    const byRow = new Map();
+    const byCol = new Map();
     toRemove.forEach( p => {
-      if ( !byRow.has( p.y ) ) {
-        byRow.set( p.y, [] );
+      if ( !byCol.has( p.x ) ) {
+        byCol.set( p.x, [] );
       }
-      byRow.get( p.y ).push( p );
+      byCol.get( p.x ).push( p );
     } );
 
-    const sortedRows = [ ...byRow.keys() ].sort().reverse();
+    const sortedCols = [ ...byCol.keys() ].sort().reverse();
     
-    sortedRows.forEach( ( row, index ) => {
-      byRow.get( row ).forEach( p => {
+    sortedCols.forEach( col => {
+      byCol.get( col ).forEach( ( p, index ) => {
         this.pieces.push( {
           type: Jewels.getRandomType(),
-          x: p.x,
+          x: col,
           y: -1 - index,
           dx: 0,
           dy: 0,
+          fall: 0,
         } );
+      } );
+    } );
+
+    // Add to fall distance for pieces above removed pieces
+    toRemove.forEach( r => {
+      this.pieces.filter( p => p.x == r.x && p.y < r.y ).forEach( p => {
+        p.fall += 1;
       } );
     } );
 
