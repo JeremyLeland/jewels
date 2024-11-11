@@ -25,11 +25,7 @@ export class Board {
   particles = [];
   readyForInput = true;
 
-  #selected = null;
-  #other = null;
-  #moveAxis = null;
-  #moveX = 0;
-  #moveY = 0;
+  #drag;
 
   static randomBoard() {
     const board = new Board();
@@ -74,6 +70,35 @@ export class Board {
 
   update( dt ) {
     let doneUpdating = true;
+
+    // Dragging or snapping
+    if ( this.#drag?.goal ) {
+      const cx = this.#drag.goal.x - this.#drag.x;
+      const cy = this.#drag.goal.y - this.#drag.y;
+      const dist = Math.hypot( cx, cy );
+
+      if ( dist < 0.001 ) {
+        const move = {
+          col: this.#drag.selected.x,
+          row: this.#drag.selected.y,
+          dx: this.#drag.goal.x,
+          dy: this.#drag.goal.y,
+        };
+
+        this.applyMove( move );
+
+        this.#drag = null;
+      }
+      else {
+        // TODO: Start fast then slow down
+        const p = 1 / ( 1 + 100 * Math.pow( dist, 2 ) );
+
+        this.#drag.x += p * cx;
+        this.#drag.y += p * cy;
+
+        doneUpdating = false;
+      }
+    }
 
     // Falling
     this.pieces.filter( p => p.fall > 0 ).forEach( p => {
@@ -122,13 +147,15 @@ export class Board {
       let x = piece.x;
       let y = piece.y;
 
-      if ( piece == this.#selected ) {
-        x += this.#moveX;
-        y += this.#moveY;
-      }
-      else if ( piece == this.#other ) {
-        x -= this.#moveX;
-        y -= this.#moveY;
+      if ( this.#drag ) {
+        if ( piece == this.#drag.selected ) {
+          x += this.#drag.x;
+          y += this.#drag.y;
+        }
+        else if ( piece == this.#drag.other ) {
+          x -= this.#drag.x;
+          y -= this.#drag.y;
+        }
       }
 
       ctx.translate( x, y );
@@ -164,6 +191,93 @@ export class Board {
     } );
   }
 
+  findRemovalsAt( col, row ) {
+    const pieceArray = Array( Cols * Rows );
+    const toRemove = new Set();
+
+    this.pieces.forEach( p => pieceArray[ p.x + p.y * Cols ] = p );
+
+    const startPiece = pieceArray[ col + row * Cols ];
+    if ( !startPiece ) {
+      debugger;
+      return;
+    }
+
+    [
+      [ 1, 0 ],   // vertical
+      [ 0, 1 ],   // horizontal
+    ].forEach( orientation => {
+      let length = 1;
+      const linePieces = [ startPiece ];
+
+      [ -1, 1 ].forEach( dir => {
+        let c = col, r = row;
+
+        while ( true ) {
+          c += dir * orientation[ 0 ];
+          r += dir * orientation[ 1 ];
+
+          if ( 0 <= c && c < Cols && 0 <= r && r < Rows ) {
+            const otherPiece = pieceArray[ c + r * Cols ];
+
+            if ( otherPiece?.type == startPiece.type ) {
+              length ++;
+              linePieces.push( otherPiece )
+            }
+            else {
+              break;
+            }
+          }
+          else {
+            break;
+          }
+        }
+      } );
+
+      if ( length >= 3 ) {
+        toRemove.add( ...linePieces );
+      }
+    } );
+
+    return toRemove;
+  }
+
+  isValidMove( move ) {
+    const selected = this.pieces.find( p => p.x == move.col && p.y == move.row );
+    const other = this.pieces.find( p => p.x == move.col + move.dx && p.y == move.row + move.dy );
+
+    // Test out move
+    selected.x += move.dx;
+    selected.y += move.dy;
+
+    other.x -= move.dx;
+    other.y -= move.dy;
+
+    // Check for lines (should only need to check at affected spots)
+    const isValid = this.findRemovalsAt( selected.x, selected.y ).size > 0 ||
+                    this.findRemovalsAt( other.x,    other.y    ).size > 0;
+
+    // Put everything back
+    other.x += move.dx;
+    other.y += move.dy;
+
+    selected.x -= move.dx;
+    selected.y -= move.dy;
+
+    return isValid;
+  }
+
+  applyMove( move ) {
+    const selected = this.pieces.find( p => p.x == move.col && p.y == move.row );
+    const other = this.pieces.find( p => p.x == move.col + move.dx && p.y == move.row + move.dy );
+
+    selected.x += move.dx;
+    selected.y += move.dy;
+
+    other.x -= move.dx;
+    other.y -= move.dy;
+  }
+
   // TODO: Better name!
   checkWins() {
     const pieceArray = Array( Cols * Rows );
@@ -175,47 +289,7 @@ export class Board {
 
     for ( let row = 0; row < Rows; row ++ ) { 
       for ( let col = 0; col < Cols; col ++ ) {
-        const startPiece = pieceArray[ col + row * Cols ];
-    
-        if ( !startPiece ) {
-          continue;
-        }
-
-        [
-          [ 1, 0 ],   // vertical
-          [ 0, 1 ],   // horizontal
-        ].forEach( orientation => {
-          let length = 1;
-          const linePieces = [ startPiece ];
-    
-          [ -1, 1 ].forEach( dir => {
-            let c = col, r = row;
-    
-            while ( true ) {
-              c += dir * orientation[ 0 ];
-              r += dir * orientation[ 1 ];
-    
-              if ( 0 <= c && c < Cols && 0 <= r && r < Rows ) {
-                const otherPiece = pieceArray[ c + r * Cols ];
-
-                if ( otherPiece?.type == startPiece.type ) {
-                  length ++;
-                  linePieces.push( otherPiece )
-                }
-                else {
-                  break;
-                }
-              }
-              else {
-                break;
-              }
-            }
-          } );
-
-          if ( length >= 3 ) {
-            toRemove.add( ...linePieces );
-          }
-        } );
+        this.findRemovalsAt( col, row ).forEach( r => toRemove.add( r ) );
       }
     }
 
@@ -281,70 +355,65 @@ export class Board {
       return;
     }
 
-    this.#selected = this.pieces.find( p => Math.hypot( x - p.x, y - p.y ) < 0.5 );
+    this.#drag = {
+      selected: this.pieces.find( p => Math.hypot( x - p.x, y - p.y ) < 0.5 ),
+      other: null,
+      axis: null,
+      x: 0,
+      y: 0,
+    };
   }
 
   moveDrag( dx, dy ) {
-    if ( !this.readyForInput ) {
+    if ( !this.#drag ) {
       return;
     }
 
-    if ( !this.#selected ) {
-      return;
+    const MIN_DRAG = 0.01;
+    if ( Math.abs( this.#drag.x ) < MIN_DRAG && Math.abs( this.#drag.y ) < MIN_DRAG ) {
+      this.#drag.axis = Math.abs( dx ) > Math.abs( dy ) ? Axis.Horizontal : Axis.Vertical;
+      this.#drag.x = 0;
+      this.#drag.y = 0;
     }
 
-    if ( Math.abs( this.#moveX ) < 0.01 && Math.abs( this.#moveY ) < 0.01 ) {
-      this.#moveAxis = Math.abs( dx ) > Math.abs( dy ) ? Axis.Horizontal : Axis.Vertical;
-      this.#moveX = 0;
-      this.#moveY = 0;
-    }
+    this.#drag.x = Math.max( -1, Math.min( 1, this.#drag.x + this.#drag.axis.x * dx ) );
+    this.#drag.y = Math.max( -1, Math.min( 1, this.#drag.y + this.#drag.axis.y * dy ) );
 
-    this.#moveX = Math.max( -1, Math.min( 1, this.#moveX + this.#moveAxis.x * dx ) );
-    this.#moveY = Math.max( -1, Math.min( 1, this.#moveY + this.#moveAxis.y * dy ) );
-
-    this.#other = this.pieces.find( p => 
-      p.x == this.#selected.x + Math.sign( this.#moveX ) && 
-      p.y == this.#selected.y + Math.sign( this.#moveY ) 
+    this.#drag.other = this.pieces.find( p => 
+      p.x == this.#drag.selected.x + Math.sign( this.#drag.x ) && 
+      p.y == this.#drag.selected.y + Math.sign( this.#drag.y ) 
     );
 
     // An invalid drag counts as no drag at all
     // This makes dragging around edges and corners look better, so we can immediately choose a different axis
-    if ( this.#other == null ) {
-      this.#moveX = 0;
-      this.#moveY = 0;
+    if ( this.#drag.other == null ) {
+      this.#drag.x = 0;
+      this.#drag.y = 0;
     }
   }
 
   stopDrag() {
-    if ( !this.readyForInput ) {
+    if ( !this.#drag ) {
       return;
     }
 
-    if ( this.#selected && this.#other ) { 
-      const finalMoveX = Math.round( this.#moveX );
-      const finalMoveY = Math.round( this.#moveY );
+    // Default to going back home, unless we end up having a valid move
+    this.#drag.goal = { x: 0, y: 0 };
 
-      this.#selected.x += finalMoveX;
-      this.#selected.y += finalMoveY;
+    const finalMoveX = Math.round( this.#drag.x );
+    const finalMoveY = Math.round( this.#drag.y );
 
-      this.#other.x -= finalMoveX;
-      this.#other.y -= finalMoveY;
-      
-      // If we didn't make any lines, then put it back
-      if ( !this.checkWins() ) {
-        this.#selected.x -= finalMoveX;
-        this.#selected.y -= finalMoveY;
+    if ( finalMoveX != 0 || finalMoveY != 0 ) {
+      const proposedMove = {
+        col: this.#drag.selected.x,
+        row: this.#drag.selected.y,
+        dx: finalMoveX,
+        dy: finalMoveY,
+      };
 
-        this.#other.x += finalMoveX;
-        this.#other.y += finalMoveY;
+      if ( this.isValidMove( proposedMove ) ) {
+        this.#drag.goal = { x: finalMoveX, y: finalMoveY };
       }
     }
-
-    this.#selected = null;
-    this.#other = null;
-    
-    this.#moveAxis = null;
-    this.#moveX = 0;
-    this.#moveY = 0;
   }
 }
