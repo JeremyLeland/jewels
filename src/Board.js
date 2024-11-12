@@ -1,7 +1,7 @@
 import * as Jewels from './Jewels.js';
 
-const Cols = 6;
-const Rows = 6;
+const Cols = 8;
+const Rows = 8;
 
 const GridPath = new Path2D();
 for ( let x = 0; x <= Cols; x ++ ) {

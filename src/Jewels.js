@@ -41,6 +41,18 @@ export const Info = {
     }
   } )(),
 
+  'Yellow': ( () => {
+    const points = getAngles( -Math.PI / 2, 3 * Math.PI / 2, 5 ).map( angle =>
+      [ Math.cos( angle ), Math.sin( angle ) * 0.8 ]
+    );
+
+    return {
+      fillStyle: 'yellow',
+      fill: getPath( points ),
+      stroke: getLayeredPath( points, 0.6 ),
+    }
+  } )(),
+
   'Blue': ( () => {
     const points = [];
 
@@ -88,6 +100,20 @@ export const Info = {
       stroke: getLayeredPath( points, 0.6 ),
     }
   } )(),
+
+  'Purple': ( () => {
+    const points = [];
+
+    getAngles( -Math.PI / 2, 3 * Math.PI / 2, 3 ).forEach( angle => {
+      points.push( [ Math.cos( angle ), Math.sin( angle ) + 0.2 ] );
+    } );
+
+    return {
+      fillStyle: 'violet',
+      fill: getPath( points ),
+      stroke: getLayeredPath( points, 0.6, 0, 0.2 ),
+    }
+  } )(),
 }
 
 function getPath( points ) {
@@ -97,7 +123,7 @@ function getPath( points ) {
   return path;
 }
 
-function getLayeredPath( points, innerSize ) {
+function getLayeredPath( points, innerSize, centerX = 0, centerY = 0 ) {
   const outer = new Path2D();
   const inner = new Path2D();
   const between = new Path2D();
@@ -105,11 +131,11 @@ function getLayeredPath( points, innerSize ) {
   points.forEach( p => {
     outer.lineTo( ...p );
 
-    const angle = Math.atan2( p[ 1 ], p[ 0 ] );
-    const dist  = Math.hypot( p[ 0 ], p[ 1 ] );
+    const angle = Math.atan2( p[ 1 ] - centerY, p[ 0 ] - centerX );
+    const dist  = Math.hypot( p[ 0 ] - centerX, p[ 1 ] - centerY );
 
-    const innerX = Math.cos( angle ) * ( dist * innerSize );
-    const innerY = Math.sin( angle ) * ( dist * innerSize );
+    const innerX = centerX + Math.cos( angle ) * ( dist * innerSize );
+    const innerY = centerY + Math.sin( angle ) * ( dist * innerSize );
 
     inner.lineTo( innerX, innerY );
 
